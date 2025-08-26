@@ -1,7 +1,6 @@
 # BG-remover-for-3dgs
 
 to do
-- ui  - below the preview, "current - image name"
 - add export settings,
     - color / alpha 0
     - color / black
@@ -10,5 +9,5 @@ output folder location should be picable, inside input folder or under the same 
 
 need better logging and error handeling
 
-ui need scroll , 
-and preview needs better click to drag instead of scrol to drag,
+ui needs scroll for the panels , 
+and preview needs better control and sensitivity  currently is too laggy and sensitive
