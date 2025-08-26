@@ -2,6 +2,8 @@
 
 to do
 
+realityscan exports images rotated 90º can we do the same?
+
 i need to correct somthing, output folder should be called "masks"
 - i need to be able to pick if its inside input folder or under the same directory
 -also need to pick from "original_filename" vs "original filename_mask" and if its under a sub folder or just there in the same directory as the originals
