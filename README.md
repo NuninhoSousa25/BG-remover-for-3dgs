@@ -5,6 +5,7 @@ to do
     - color / alpha 0
     - color / black
     - white /black
+
 output folder location should be picable, inside input folder or under the same directory
 
 need better logging and error handeling
