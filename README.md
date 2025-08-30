@@ -11,6 +11,9 @@ and please add scrool bars to the ui because ai fear ai cant quite reach all the
 
 need better logging and error handeling
 
+foreground and background ajustmets are not working,
+when i change model, i dont belive it uses the new model in the preview
+
 ui needs scroll for the panels , 
 and preview needs better control and sensitivity  currently is too laggy and sensitive
 
