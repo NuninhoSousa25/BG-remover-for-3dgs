@@ -12,7 +12,26 @@ need better logging and error handeling
 
 and preview needs better control and sensitivity  currently is too laggy and sensitive
 
+  Phase 1: Clean & Extract (Quick wins)
 
+  1. Remove debug print statements or move to proper logging
+  2. Extract constants for magic numbers (delays, sizes, defaults)
+  3. Split UI creation into smaller, focused methods
+  4. Add type hints for better code clarity
+  5. Improve error handling with specific exception types
+
+  Phase 2: Modular Structure
+
+  6. Extract UI components into separate classes/methods
+  7. Separate business logic from UI code
+  8. Create utility functions for common operations
+  9. Add configuration management for settings persistence
+
+  Phase 3: Architecture (If desired)
+
+  10. Split into multiple files (ui.py, processor.py, settings.py)
+  11. Implement proper MVC pattern
+  12. Add unit tests for core functionality
 ---
 
 # Batch Background Removal Tool
