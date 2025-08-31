@@ -12,7 +12,9 @@ need better logging and error handeling
 
 and preview needs better control and sensitivity  currently is too laggy and sensitive
 
+add a toggle to show original image
 
+when refreshing image,/ recalculating, we should keep the same position on the preview
   Phase 2: Modular Structure
 
   
