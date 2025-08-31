@@ -12,13 +12,6 @@ need better logging and error handeling
 
 and preview needs better control and sensitivity  currently is too laggy and sensitive
 
-  Phase 1: Clean & Extract (Quick wins)
-
-  1. Remove debug print statements or move to proper logging
-  2. Extract constants for magic numbers (delays, sizes, defaults)
-  3. Split UI creation into smaller, focused methods
-  4. Add type hints for better code clarity
-  5. Improve error handling with specific exception types
 
   Phase 2: Modular Structure
 
