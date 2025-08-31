@@ -15,8 +15,7 @@ and preview needs better control and sensitivity  currently is too laggy and sen
 
   Phase 2: Modular Structure
 
-  6. Extract UI components into separate classes/methods
-  7. Separate business logic from UI code
+  
   8. Create utility functions for common operations
   9. Add configuration management for settings persistence
 
