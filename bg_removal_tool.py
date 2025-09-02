@@ -139,7 +139,9 @@ class InputSettingsSection(UIComponent):
         # Input folder selection
         ttk.Label(frame, text="Input Folder:").grid(row=0, column=0, sticky=tk.W, pady=5)
         ttk.Entry(frame, textvariable=self.settings_manager.input_folder, width=30).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(frame, text="Browse...", command=self.browse_callback).grid(row=0, column=2)
+        browse_btn = ttk.Button(frame, text="Browse...", command=self.browse_callback)
+        browse_btn.grid(row=0, column=2)
+        self.add_tooltip(browse_btn, "Select folder containing images. The folder will be automatically scanned for image files.")
         
         # Overwrite checkbox
         overwrite_cb = ttk.Checkbutton(frame, text="Overwrite existing files", 
@@ -837,6 +839,10 @@ class BackgroundRemovalApp:
         self.update_export_controls()
         self.update_resize_controls()
         self.update_alpha_matting_controls()
+    
+    def add_tooltip(self, widget, text: str):
+        """Add a tooltip to a widget"""
+        ToolTip(widget, text)
         
     def create_ui(self):
         """Create the main user interface using modular components"""
@@ -895,6 +901,7 @@ class BackgroundRemovalApp:
         self.current_file_label = widgets['current_file_label']
         self.process_single_button = widgets['process_single_button']
         self.scan_button = widgets['scan_button']
+        self.add_tooltip(self.scan_button, "Manually re-scan the input folder for images. Folder is automatically scanned when selected via Browse.")
         self.process_button = widgets['process_button']
         self.stop_button = widgets['stop_button']
         self.progress_var = widgets['progress_var']
@@ -1054,6 +1061,8 @@ class BackgroundRemovalApp:
         folder = filedialog.askdirectory(title="Select Input Folder")
         if folder:
             self.settings_manager.input_folder.set(folder)
+            # Auto-scan the folder after selection if it's valid
+            self.root.after(100, self.scan_folder)
             
     def scan_folder(self):
         """Scan folder for images using business logic"""
@@ -1096,19 +1105,49 @@ class BackgroundRemovalApp:
         try:
             photo, pil_image, status, _ = self.preview_queue.get_nowait()
             if photo:
+                # Save current zoom and scroll position
+                current_zoom = self.zoom_var.get()
+                scroll_x = self.preview_canvas.canvasx(0)
+                scroll_y = self.preview_canvas.canvasy(0)
+                
                 self.preview_canvas.delete("all")
                 self.current_preview = photo
                 self.current_pil_image = pil_image
                 self.preview_canvas.create_image(0, 0, anchor=tk.NW, image=self.current_preview, tags="preview_image")
                 self.preview_canvas.configure(scrollregion=self.preview_canvas.bbox("all"))
-                self.zoom_var.set(1.0)
-                self.root.after(100, self.fit_to_window)
+                
+                # Restore zoom and position instead of resetting
+                if hasattr(self, 'current_pil_image') and self.current_pil_image and current_zoom > 0:
+                    self.zoom_var.set(current_zoom)
+                    self.apply_zoom()
+                    # Restore scroll position after zoom is applied
+                    self.root.after(10, lambda: self.restore_scroll_position(scroll_x, scroll_y))
+                else:
+                    self.zoom_var.set(1.0)
+                    self.root.after(100, self.fit_to_window)
             self.status_var.set(status)
         except queue.Empty:
             pass
         finally:
             self.root.after(100, self.check_preview_queue)
             
+    def restore_scroll_position(self, scroll_x, scroll_y):
+        """Restore the canvas scroll position"""
+        try:
+            # Get the current scroll region
+            bbox = self.preview_canvas.bbox("all")
+            if bbox:
+                # Calculate the relative position
+                canvas_width = self.preview_canvas.winfo_width()
+                canvas_height = self.preview_canvas.winfo_height()
+                
+                # Restore scroll position
+                self.preview_canvas.xview_moveto(scroll_x / max(bbox[2] - bbox[0], canvas_width))
+                self.preview_canvas.yview_moveto(scroll_y / max(bbox[3] - bbox[1], canvas_height))
+        except Exception:
+            # If restoration fails, just continue - better than crashing
+            pass
+    
     def stop_processing(self):
         self.image_processor.should_stop = True
         self.status_var.set("Stopping...")
