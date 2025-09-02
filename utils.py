@@ -344,3 +344,214 @@ class PerformanceUtils:
             'max_time': max(processing_times),
             'total_time': sum(processing_times)
         }
+
+
+class WidgetUtils:
+    """Utilities for common widget operations"""
+    
+    @staticmethod
+    def create_labeled_entry(parent, text: str, textvariable, row: int, 
+                           column: int = 0, width: int = 20, **kwargs):
+        """Create a labeled entry widget with consistent layout"""
+        import tkinter as tk
+        from tkinter import ttk
+        
+        ttk.Label(parent, text=text).grid(row=row, column=column, sticky=tk.W, pady=2)
+        entry = ttk.Entry(parent, textvariable=textvariable, width=width)
+        entry.grid(row=row, column=column+1, padx=5, pady=2, **kwargs)
+        return entry
+    
+    @staticmethod
+    def create_labeled_button(parent, label_text: str, button_text: str, 
+                            command, row: int, column: int = 0, **kwargs):
+        """Create a labeled button with consistent layout"""
+        import tkinter as tk
+        from tkinter import ttk
+        
+        ttk.Label(parent, text=label_text).grid(row=row, column=column, sticky=tk.W, pady=2)
+        button = ttk.Button(parent, text=button_text, command=command)
+        button.grid(row=row, column=column+1, padx=5, pady=2, **kwargs)
+        return button
+    
+    @staticmethod
+    def create_checkbutton_with_tooltip(parent, text: str, variable, tooltip_text: str, 
+                                      row: int, column: int = 0, **kwargs):
+        """Create a checkbutton with tooltip"""
+        import tkinter as tk
+        from tkinter import ttk
+        
+        cb = ttk.Checkbutton(parent, text=text, variable=variable)
+        cb.grid(row=row, column=column, sticky=tk.W, **kwargs)
+        # Note: Tooltip will be added externally using add_tooltip method
+        return cb, tooltip_text
+    
+    @staticmethod
+    def create_slider_with_labels(parent, from_val: float, to_val: float, 
+                                variable, row: int, column: int = 0):
+        """Create a slider with value labels"""
+        import tkinter as tk
+        from tkinter import ttk
+        
+        slider = ttk.Scale(parent, from_=from_val, to=to_val, variable=variable, orient=tk.HORIZONTAL)
+        slider.grid(row=row, column=column, columnspan=2, sticky=tk.W+tk.E, padx=5, pady=2)
+        
+        label = ttk.Label(parent, text=str(int(variable.get())))
+        label.grid(row=row, column=column+2, sticky=tk.W, padx=5)
+        
+        return slider, label
+    
+    @staticmethod
+    def set_widget_state(widget, enabled: bool):
+        """Set widget state (enabled/disabled) safely"""
+        import tkinter as tk
+        try:
+            widget.config(state=tk.NORMAL if enabled else tk.DISABLED)
+        except Exception:
+            pass
+    
+    @staticmethod
+    def set_widget_color(widget, foreground: str = None, background: str = None):
+        """Set widget colors safely"""
+        try:
+            config_dict = {}
+            if foreground:
+                config_dict['foreground'] = foreground
+            if background:
+                config_dict['background'] = background
+            if config_dict:
+                widget.config(**config_dict)
+        except Exception:
+            pass
+
+
+class ThreadUtils:
+    """Utilities for threading operations"""
+    
+    @staticmethod
+    def run_in_background(target, args=None, daemon=True, name=None):
+        """Run function in background thread"""
+        import threading
+        
+        if args is None:
+            args = ()
+        
+        thread = threading.Thread(target=target, args=args, daemon=daemon, name=name)
+        thread.start()
+        return thread
+    
+    @staticmethod
+    def safe_queue_put(queue_obj, item, timeout: float = None):
+        """Safely put item in queue with timeout"""
+        import queue
+        try:
+            queue_obj.put(item, timeout=timeout)
+            return True
+        except queue.Full:
+            return False
+    
+    @staticmethod
+    def safe_queue_get(queue_obj, timeout: float = None):
+        """Safely get item from queue with timeout"""
+        import queue
+        try:
+            return queue_obj.get_nowait() if timeout is None else queue_obj.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+
+class SettingsUtils:
+    """Utilities for common settings operations"""
+    
+    @staticmethod
+    def bind_variable_trace(variable, callback, trace_mode='write'):
+        """Safely bind variable trace"""
+        try:
+            variable.trace_add(trace_mode, callback)
+        except Exception:
+            pass
+    
+    @staticmethod
+    def get_variable_value(variable, default_value=None):
+        """Safely get variable value with fallback"""
+        try:
+            return variable.get()
+        except Exception:
+            return default_value
+    
+    @staticmethod
+    def set_variable_value(variable, value):
+        """Safely set variable value"""
+        try:
+            variable.set(value)
+            return True
+        except Exception:
+            return False
+    
+    @staticmethod
+    def validate_numeric_range(value, min_val: float, max_val: float, default_val: float = None):
+        """Validate numeric value is within range"""
+        try:
+            num_val = float(value)
+            if min_val <= num_val <= max_val:
+                return num_val
+        except (ValueError, TypeError):
+            pass
+        
+        return default_val if default_val is not None else min_val
+
+
+class CanvasUtils:
+    """Utilities for canvas operations"""
+    
+    @staticmethod
+    def safe_canvas_delete(canvas, *tags):
+        """Safely delete canvas items by tags"""
+        try:
+            for tag in tags:
+                canvas.delete(tag)
+        except Exception:
+            pass
+    
+    @staticmethod
+    def safe_canvas_create_image(canvas, x: int, y: int, image, anchor="nw", tags=None):
+        """Safely create canvas image"""
+        try:
+            return canvas.create_image(x, y, anchor=anchor, image=image, tags=tags)
+        except Exception:
+            return None
+    
+    @staticmethod
+    def safe_canvas_configure_scroll(canvas, bbox=None):
+        """Safely configure canvas scroll region"""
+        try:
+            if bbox is None:
+                bbox = canvas.bbox("all")
+            if bbox:
+                canvas.configure(scrollregion=bbox)
+        except Exception:
+            pass
+    
+    @staticmethod
+    def get_canvas_scroll_position(canvas):
+        """Get current canvas scroll position"""
+        try:
+            return {
+                'scroll_x': canvas.canvasx(0),
+                'scroll_y': canvas.canvasy(0)
+            }
+        except Exception:
+            return {'scroll_x': 0, 'scroll_y': 0}
+    
+    @staticmethod
+    def restore_canvas_scroll_position(canvas, scroll_x: float, scroll_y: float):
+        """Restore canvas scroll position"""
+        try:
+            bbox = canvas.bbox("all")
+            if bbox:
+                canvas_width = canvas.winfo_width()
+                canvas_height = canvas.winfo_height()
+                
+                canvas.xview_moveto(scroll_x / max(bbox[2] - bbox[0], canvas_width))
+                canvas.yview_moveto(scroll_y / max(bbox[3] - bbox[1], canvas_height))
+        except Exception:
+            pass

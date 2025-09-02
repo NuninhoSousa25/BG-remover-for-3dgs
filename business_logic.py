@@ -57,7 +57,7 @@ class ProcessingSettings:
         self.batch_delay_ms: int = 100
         
         # Output settings
-        self.background_type: str = "Transparent"  # "Transparent", "White", "Black", "Alpha Matte (W/B)"
+        self.background_type: str = "Alpha Matte (W/B)"  # "Transparent", "White", "Black", "Alpha Matte (W/B)"
     
     def get_model_description(self, model_name: str) -> str:
         """Get description for a model"""
@@ -420,18 +420,21 @@ class ProjectManager:
             self.custom_output_folder
         )
     
+    def get_output_filename(self, input_filename: str) -> str:
+        """Get output filename for an input filename"""
+        return PathUtils.get_output_filename(
+            input_filename,
+            self.output_naming_mode,
+            self.output_filename_suffix
+        )
+    
     def get_output_path(self, input_filename: str) -> Optional[str]:
         """Get full output path for an input filename"""
         output_dir = self.get_output_directory()
         if not output_dir:
             return None
         
-        output_filename = PathUtils.get_output_filename(
-            input_filename,
-            self.output_naming_mode,
-            self.output_filename_suffix
-        )
-        
+        output_filename = self.get_output_filename(input_filename)
         return os.path.join(output_dir, output_filename)
     
     def prepare_batch_processing(self) -> Tuple[List[str], List[str], List[str]]:
