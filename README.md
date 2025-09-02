@@ -14,15 +14,7 @@ and preview needs better control and sensitivity  currently is too laggy and sen
 
 add a toggle to show original image
 
-  Phase 2: Modular Structure
 
-  9. Add configuration management for settings persistence
-
-  Phase 3: Architecture (If desired)
-
-  10. Split into multiple files (ui.py, processor.py, settings.py)
-  11. Implement proper MVC pattern
-  12. Add unit tests for core functionality
 ---
 
 # Batch Background Removal Tool
