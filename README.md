@@ -16,8 +16,6 @@ add a toggle to show original image
 
   Phase 2: Modular Structure
 
-  
-  8. Create utility functions for common operations
   9. Add configuration management for settings persistence
 
   Phase 3: Architecture (If desired)
