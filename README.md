@@ -4,8 +4,6 @@ to do
 
 realityscan exports images rotated 90º can we do the same?
 
-needs scroll, on the ui panel
-
 add a toggle to show original image
 
 
