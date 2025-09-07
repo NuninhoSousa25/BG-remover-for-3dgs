@@ -4,13 +4,7 @@ to do
 
 realityscan exports images rotated 90º can we do the same?
 
-i need to correct somthing, output folder should be called "masks"
-- i need to be able to pick if its inside input folder or under the same directory
--also need to pick from "original_filename" vs "original filename_mask" and if its under a sub folder or just there in the same directory as the originals
-
-need better logging and error handeling
-
-and preview needs better control and sensitivity  currently is too laggy and sensitive
+needs scroll, on the ui panel
 
 add a toggle to show original image
 
