@@ -4,7 +4,6 @@ to do
 
 realityscan exports images rotated 90º can we do the same?
 
-make sure to recalculate mask, after every settings change, with a secure small delay to acount for small incremental changes
 
 ---
 
@@ -12,7 +11,18 @@ make sure to recalculate mask, after every settings change, with a secure small 
 
 A desktop application for Windows, macOS, and Linux designed for batch processing images to remove their backgrounds. The tool is built with Python and Tkinter, leveraging the powerful `rembg` library for AI-powered background segmentation. It is optimized for CPU-only execution to ensure it runs on a wide variety of machines without requiring a dedicated GPU.
 
+The tool is particularly suited for photogrammetry workflows, including Reality Capture preprocessing, 3D Gaussian Splatting image preparation, and other computer vision applications requiring precise foreground-background separation.
+
+
+
 ## Features
+### Version 1.3 Enhancements:
+*   **Enhanced User Interface Navigation:** Implemented comprehensive scrolling functionality with mouse wheel and keyboard input support throughout the control panel interface
+*   **Dynamic Preview System:** Automatic mask recalculation triggered by parameter modifications, employing a 500-millisecond debounce mechanism to optimize computational efficiency
+*   **Comparative Visualization Mode:** Toggle functionality for simultaneous display of source and processed images with synchronized viewport controls and geometric alignment
+*   **Asynchronous Initialization:** Non-blocking application startup with background model loading to reduce perceived latency
+*   **Logging Optimization:** Complete suppression of CUDA-related error messages and runtime warnings for cleaner operational output
+### Core Functionality:
 
 *   **Batch Processing:** Process entire folders of images in one go.
 *   **AI Model Selection:** Choose from different models (`u2netp`, `u2net`, etc.) to balance speed and quality.
