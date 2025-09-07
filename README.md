@@ -4,8 +4,7 @@ to do
 
 realityscan exports images rotated 90º can we do the same?
 
-add a toggle to show original image
-
+make sure to recalculate mask, after every settings change, with a secure small delay to acount for small incremental changes
 
 ---
 
