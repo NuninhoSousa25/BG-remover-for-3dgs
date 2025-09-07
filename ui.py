@@ -249,7 +249,8 @@ class ProcessingOptionsSection(UIComponent):
         
         # Post-processing
         post_process_cb = ttk.Checkbutton(frame, text="Post-processing", 
-                                        variable=self.settings_manager.post_processing)
+                                        variable=self.settings_manager.post_processing,
+                                        command=self.settings_change_callback)
         post_process_cb.grid(row=1, column=0, columnspan=3, sticky=tk.W)
         self.add_tooltip(post_process_cb, "Post-processing applies additional edge smoothing and hole filling to clean up the mask. Can improve results on complex images.")
         
@@ -259,7 +260,7 @@ class ProcessingOptionsSection(UIComponent):
         # Foreground threshold
         self.fg_label_text = ttk.Label(frame, text="Foreground:")
         self.fg_label_text.grid(row=3, column=0, sticky=tk.W, pady=2)
-        self.fg_slider = ttk.Scale(frame, from_=0, to=255, variable=self.settings_manager.alpha_matting_foreground_threshold, orient=tk.HORIZONTAL, command=self.update_fg_label)
+        self.fg_slider = ttk.Scale(frame, from_=0, to=255, variable=self.settings_manager.alpha_matting_foreground_threshold, orient=tk.HORIZONTAL, command=self.update_fg_label_and_preview)
         self.fg_slider.grid(row=3, column=1, sticky=tk.W+tk.E, padx=5, pady=2)
         self.fg_label = ttk.Label(frame, text=str(int(self.settings_manager.alpha_matting_foreground_threshold.get())))
         self.fg_label.grid(row=3, column=2, sticky=tk.W, padx=5)
@@ -268,7 +269,7 @@ class ProcessingOptionsSection(UIComponent):
         # Background threshold
         self.bg_label_text = ttk.Label(frame, text="Background:")
         self.bg_label_text.grid(row=4, column=0, sticky=tk.W, pady=2)
-        self.bg_slider = ttk.Scale(frame, from_=0, to=255, variable=self.settings_manager.alpha_matting_background_threshold, orient=tk.HORIZONTAL, command=self.update_bg_label)
+        self.bg_slider = ttk.Scale(frame, from_=0, to=255, variable=self.settings_manager.alpha_matting_background_threshold, orient=tk.HORIZONTAL, command=self.update_bg_label_and_preview)
         self.bg_slider.grid(row=4, column=1, sticky=tk.W+tk.E, padx=5, pady=2)
         self.bg_label = ttk.Label(frame, text=str(int(self.settings_manager.alpha_matting_background_threshold.get())))
         self.bg_label.grid(row=4, column=2, sticky=tk.W, padx=5)
@@ -303,13 +304,25 @@ class ProcessingOptionsSection(UIComponent):
         threshold_val = SettingsUtils.get_variable_value(
             self.settings_manager.alpha_matting_background_threshold, 10)
         self.bg_label.config(text=str(int(float(threshold_val))))
+    
+    def update_fg_label_and_preview(self, value=None):
+        """Update foreground label and trigger preview refresh"""
+        self.update_fg_label(value)
+        if self.settings_change_callback:
+            self.settings_change_callback()
+    
+    def update_bg_label_and_preview(self, value=None):
+        """Update background label and trigger preview refresh"""
+        self.update_bg_label(value)
+        self.settings_change_callback()
 
 
 class CPUSettingsSection(UIComponent):
     """CPU settings UI component"""
-    def __init__(self, parent, settings_manager, resize_update_callback):
+    def __init__(self, parent, settings_manager, resize_update_callback, settings_change_callback=None):
         super().__init__(parent, settings_manager)
         self.resize_update_callback = resize_update_callback
+        self.settings_change_callback = settings_change_callback
 
     def create_frame(self) -> tk.Widget:
         """Create the CPU settings frame"""
@@ -343,7 +356,7 @@ class CPUSettingsSection(UIComponent):
         # Pre-resize option
         self.resize_cb = ttk.Checkbutton(frame, text="Pre-resize large images", 
                                         variable=self.settings_manager.resize_enabled,
-                                        command=self.resize_update_callback)
+                                        command=self.resize_update_and_preview_callback)
         self.resize_cb.grid(row=3, column=0, columnspan=2, sticky=tk.W)
         self.add_tooltip(self.resize_cb, "Resize large images before processing to improve speed. Smaller images = faster processing but lower quality.")
         
@@ -356,18 +369,20 @@ class CPUSettingsSection(UIComponent):
         resize_mode_combo = ttk.Combobox(resize_frame, textvariable=self.settings_manager.resize_mode, width=10,
                                         values=["pixels", "fraction"])
         resize_mode_combo.grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
-        resize_mode_combo.bind("<<ComboboxSelected>>", self.resize_update_callback)
+        resize_mode_combo.bind("<<ComboboxSelected>>", self.resize_update_and_preview_callback)
         
         # Max size (pixels mode)
         ttk.Label(resize_frame, text="Max Size:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.max_size_spinbox = ttk.Spinbox(resize_frame, from_=200, to=2000, increment=50,
-                                           textvariable=self.settings_manager.max_image_size, width=10)
+                                           textvariable=self.settings_manager.max_image_size, width=10,
+                                           command=self._on_resize_value_change)
         self.max_size_spinbox.grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
         
         # Resize fraction (fraction mode)
         ttk.Label(resize_frame, text="Resize Fraction:").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.fraction_spinbox = ttk.Spinbox(resize_frame, from_=0.1, to=1.0, increment=0.1,
-                                           textvariable=self.settings_manager.resize_fraction, width=10)
+                                           textvariable=self.settings_manager.resize_fraction, width=10,
+                                           command=self._on_resize_value_change)
         self.fraction_spinbox.grid(row=2, column=1, sticky=tk.W, padx=5, pady=2)
         
         self.resize_frame = resize_frame
@@ -387,6 +402,19 @@ class CPUSettingsSection(UIComponent):
             pixels_mode = resize_mode == "pixels"
             WidgetUtils.set_widget_state(self.max_size_spinbox, pixels_mode)
             WidgetUtils.set_widget_state(self.fraction_spinbox, not pixels_mode)
+    
+    def resize_update_and_preview_callback(self, event=None):
+        """Update resize controls and trigger preview refresh"""
+        self.resize_update_callback()
+        # Also trigger preview refresh since resize affects processing
+        if hasattr(self, 'settings_change_callback') and callable(self.settings_change_callback):
+            self.settings_change_callback()
+    
+    def _on_resize_value_change(self):
+        """Called when resize values (max size, fraction) change"""
+        # Trigger preview refresh since resize values affect processing
+        if hasattr(self, 'settings_change_callback') and callable(self.settings_change_callback):
+            self.settings_change_callback()
 
 
 class ResourceMonitorSection(UIComponent):
@@ -441,12 +469,52 @@ class SettingsPanel:
         def on_mouse_wheel(event):
             canvas.yview_scroll(int(-1*(event.delta/Constants.MOUSE_WHEEL_DELTA_DIVISOR)), "units")
 
-        def bind_mouse_wheel(widget):
-            canvas.bind("<MouseWheel>", on_mouse_wheel)
+        def on_key_scroll(event):
+            """Handle keyboard scrolling"""
+            if event.keysym == 'Up':
+                canvas.yview_scroll(-1, "units")
+            elif event.keysym == 'Down':
+                canvas.yview_scroll(1, "units")
+            elif event.keysym == 'Page_Up':
+                canvas.yview_scroll(-5, "units")
+            elif event.keysym == 'Page_Down':
+                canvas.yview_scroll(5, "units")
+            elif event.keysym == 'Home':
+                canvas.yview_moveto(0)
+            elif event.keysym == 'End':
+                canvas.yview_moveto(1)
 
+        def bind_scroll_events_recursive(widget):
+            """Recursively bind scroll events to all child widgets"""
+            widget.bind("<MouseWheel>", on_mouse_wheel)
+            widget.bind("<Key-Up>", on_key_scroll)
+            widget.bind("<Key-Down>", on_key_scroll)
+            widget.bind("<Key-Page_Up>", on_key_scroll)
+            widget.bind("<Key-Page_Down>", on_key_scroll)
+            widget.bind("<Key-Home>", on_key_scroll)
+            widget.bind("<Key-End>", on_key_scroll)
+            for child in widget.winfo_children():
+                bind_scroll_events_recursive(child)
+
+        # Bind to canvas and container
         canvas.bind("<MouseWheel>", on_mouse_wheel)
-        self.parent.after(Constants.MOUSE_WHEEL_BIND_DELAY_MS, 
-                         lambda: bind_mouse_wheel(self.scrollable_frame))
+        container.bind("<MouseWheel>", on_mouse_wheel)
+        
+        # Enable focus for keyboard scrolling
+        canvas.focus_set()
+        container.focus_set()
+        
+        # Bind to all child widgets after they're created
+        def delayed_bind():
+            bind_scroll_events_recursive(self.scrollable_frame)
+            bind_scroll_events_recursive(container)
+        
+        self.parent.after(Constants.MOUSE_WHEEL_BIND_DELAY_MS, delayed_bind)
+        
+        # Store references for later use
+        self.canvas = canvas
+        self.container = container
+        self.bind_scroll_events_recursive = bind_scroll_events_recursive
 
         return self.scrollable_frame
 
@@ -476,14 +544,25 @@ class SettingsPanel:
         sections['processing'].create_frame()
         
         sections['cpu'] = CPUSettingsSection(
-            self.scrollable_frame, self.settings_manager, self.callbacks['resize_update'])
+            self.scrollable_frame, self.settings_manager, self.callbacks['resize_update'], 
+            self.callbacks.get('settings_change'))
         sections['cpu'].create_frame()
         
         sections['monitor'] = ResourceMonitorSection(
             self.scrollable_frame, self.settings_manager)
         sections['monitor'].create_frame()
         
+        # Bind mouse wheel to all newly created widgets
+        self.refresh_mouse_wheel_bindings()
+        
         return sections
+    
+    def refresh_mouse_wheel_bindings(self):
+        """Refresh scroll bindings for all widgets in the scrollable frame"""
+        if hasattr(self, 'bind_scroll_events_recursive') and hasattr(self, 'scrollable_frame'):
+            self.bind_scroll_events_recursive(self.scrollable_frame)
+            if hasattr(self, 'container'):
+                self.bind_scroll_events_recursive(self.container)
 
 
 class PreviewPanel:
@@ -544,6 +623,13 @@ class PreviewPanel:
 
         ttk.Button(zoom_frame, text="Fit", command=self.callbacks['fit_to_window'], width=8).pack(side=tk.LEFT, padx=5)
         ttk.Button(zoom_frame, text="1:1", command=self.callbacks['zoom_actual_size'], width=8).pack(side=tk.LEFT, padx=5)
+        
+        # Original image toggle
+        self.widgets['show_original_var'] = tk.BooleanVar(value=False)
+        original_toggle = ttk.Checkbutton(zoom_frame, text="Show Original", 
+                                        variable=self.widgets['show_original_var'],
+                                        command=self.callbacks['toggle_original'])
+        original_toggle.pack(side=tk.LEFT, padx=5)
 
         # Bind canvas events
         self.widgets['preview_canvas'].bind("<MouseWheel>", self.callbacks['on_mouse_wheel'])

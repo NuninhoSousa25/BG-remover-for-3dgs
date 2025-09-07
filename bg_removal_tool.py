@@ -10,16 +10,23 @@ from typing import Optional, Tuple, List
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 os.environ['OMP_NUM_THREADS'] = str(min(4, os.cpu_count()))
 
-# Clear any existing CUDA paths that might interfere
-if 'CUDA_PATH' in os.environ:
-    del os.environ['CUDA_PATH']
-if 'CUDA_PATH_V12_1' in os.environ:
-    del os.environ['CUDA_PATH_V12_1']
-if 'CUDA_PATH_V11_8' in os.environ:
-    del os.environ['CUDA_PATH_V11_8']
+# Comprehensive CUDA suppression
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '1'
 
-# Suppress ONNX Runtime logging to hide CUDA error messages
-os.environ['ORT_LOGGING_LEVEL'] = '3'  # Only show fatal errors
+# Clear any existing CUDA paths that might interfere
+cuda_vars = [k for k in os.environ.keys() if 'CUDA' in k]
+for var in cuda_vars:
+    if var != 'CUDA_VISIBLE_DEVICES':  # Keep our empty setting
+        del os.environ[var]
+
+# Suppress ONNX Runtime logging completely
+os.environ['ORT_LOGGING_LEVEL'] = '4'  # No logging at all
+os.environ['ONNXRUNTIME_LOG_SEVERITY_LEVEL'] = '4'
+
+# Disable ONNX Runtime GPU providers completely
+os.environ['ORT_DISABLE_TRT'] = '1'
+os.environ['ORT_DISABLE_CUDA'] = '1'
 
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
@@ -47,21 +54,64 @@ class BackgroundRemovalApp:
     """Main application controller"""
     def __init__(self, root):
         self.root = root
-        self.root.title("Batch Background Removal Tool")
+        self.root.title("Batch Background Removal Tool - Loading...")
         self.root.geometry(f"{Constants.WINDOW_WIDTH}x{Constants.WINDOW_HEIGHT}")
-        self.settings_manager = SettingsManager()
-        self.image_processor = ImageProcessorAdapter(self.settings_manager)
+        
+        # Initialize basic components first
         self.preview_queue = queue.Queue()
         self.files_to_process = []
         self.debounce_timer = None
         self.processing = False
+        self.image_processor = None  # Lazy load this
+        
+        # Create UI immediately for responsive feel
+        self.settings_manager = SettingsManager()
         self.create_ui()
+        
+        # Show loading status
+        self.status_var.set("Loading AI model... (this may take a moment)")
+        
+        # Initialize heavy components in background
+        self.root.after(50, self.lazy_init_processor)
+        
+        # Start UI update loops
         self.root.after(Constants.PREVIEW_CHECK_INTERVAL_MS, self.check_preview_queue)
         self.root.after(Constants.RESOURCE_UPDATE_INTERVAL_MS, self.update_resource_monitor)
         self.update_export_controls()
         self.update_resize_controls()
         self.update_alpha_matting_controls()
     
+    def lazy_init_processor(self):
+        """Initialize the image processor in background after UI is shown"""
+        def init_in_thread():
+            try:
+                # This is the slow part - loading the AI model
+                self.image_processor = ImageProcessorAdapter(self.settings_manager)
+                
+                # Update UI on main thread
+                self.root.after(0, self.on_processor_ready)
+            except Exception as e:
+                self.root.after(0, lambda: self.on_processor_error(str(e)))
+        
+        # Run in background thread to keep UI responsive
+        ThreadUtils.run_in_background(init_in_thread, name="processor-init")
+    
+    def on_processor_ready(self):
+        """Called when processor is ready"""
+        self.root.title("Batch Background Removal Tool")
+        self.status_var.set("Ready - Select input folder to begin")
+        
+        # Enable buttons that require processor
+        WidgetUtils.set_widget_state(self.scan_button, True)
+        WidgetUtils.set_widget_state(self.process_button, True)
+    
+    def on_processor_error(self, error_msg):
+        """Called when processor initialization fails"""
+        self.root.title("Batch Background Removal Tool - Error")
+        self.status_var.set(f"Error loading AI model: {error_msg}")
+        UIUtils.show_error_message("Initialization Error", 
+            f"Failed to load AI model: {error_msg}")
+
     def add_tooltip(self, widget, text: str):
         """Add a tooltip to a widget"""
         ToolTip(widget, text)
@@ -93,7 +143,8 @@ class BackgroundRemovalApp:
             'scan_folder': self.scan_folder,
             'start_processing': self.start_processing,
             'stop_processing': self.stop_processing,
-            'process_single_image': self.process_single_image
+            'process_single_image': self.process_single_image,
+            'toggle_original': self.toggle_original_view
         }
 
         # Create settings panel (left side)
@@ -150,6 +201,10 @@ class BackgroundRemovalApp:
         self.current_preview = None
         self.current_pil_image = None
         self.zoomed_preview = None
+        self.current_original_image = None
+        
+        # Original image toggle reference
+        self.show_original_var = widgets['show_original_var']
 
     def update_resize_controls_wrapper(self):
         """Wrapper to call the CPU component's resize update method"""
@@ -187,8 +242,13 @@ class BackgroundRemovalApp:
     
     def on_model_change(self):
         """Handle model change - refresh processors and preview"""
-        self.image_processor.refresh_processors()
-        self.refresh_preview_debounced()
+        if self.image_processor:
+            # Sync the new model name to business logic before refreshing
+            self._sync_ui_settings_to_processor()
+            self.image_processor.refresh_processors()
+            self.refresh_preview_debounced()
+        else:
+            self.status_var.set("Please wait for AI model to finish loading...")
     
     def browse_output(self):
         folder = filedialog.askdirectory(title="Select Custom Output Folder")
@@ -197,6 +257,10 @@ class BackgroundRemovalApp:
     
     def process_single_image(self):
         """Process the currently selected image"""
+        if not self.image_processor:
+            UIUtils.show_error_message("Error", "Please wait for the AI model to finish loading.")
+            return
+            
         selection = self.file_listbox.curselection()
         if not selection:
             UIUtils.show_error_message("Error", "Please select an image to process.")
@@ -233,6 +297,10 @@ class BackgroundRemovalApp:
     
     def start_processing(self):
         """Start batch processing"""
+        if not self.image_processor:
+            UIUtils.show_error_message("Error", "Please wait for the AI model to finish loading.")
+            return
+            
         if not self.files_to_process:
             UIUtils.show_error_message("Error", "Please scan a folder with images first.")
             return
@@ -344,25 +412,75 @@ class BackgroundRemovalApp:
         ThreadUtils.run_in_background(self.generate_preview_thread, args=(input_path,), 
                                     name=f"preview-{filename}")
         WidgetUtils.set_widget_state(self.process_single_button, True)
+    
+    def toggle_original_view(self):
+        """Toggle between original and processed image view"""
+        if hasattr(self, 'current_original_image') and self.current_original_image:
+            self.update_preview_display()
+        else:
+            # If we don't have original cached, refresh the preview
+            self.refresh_preview_now()
         
     def generate_preview_thread(self, input_path):
-        photo, pil_image, status = self.image_processor.generate_preview(input_path)
-        ThreadUtils.safe_queue_put(self.preview_queue, (photo, pil_image, status, None))
+        # Generate processed image
+        photo, pil_image, status = self.image_processor.generate_preview(input_path) if self.image_processor else (None, None, "Model loading...")
+        
+        # Load original image with same transforms as processed image
+        try:
+            original_pil = self._prepare_original_image_for_display(input_path)
+            if original_pil:
+                original_photo = ImageTk.PhotoImage(original_pil.copy())
+            else:
+                original_photo = None
+        except Exception:
+            original_pil = None
+            original_photo = None
+            
+        ThreadUtils.safe_queue_put(self.preview_queue, (photo, pil_image, status, (original_photo, original_pil)))
+    
+    def _prepare_original_image_for_display(self, input_path: str) -> Optional[Image.Image]:
+        """Prepare original image with same transforms as processed image for accurate comparison"""
+        if not self.image_processor or not self.image_processor.image_processor:
+            return None
+            
+        try:
+            with Image.open(input_path) as img:
+                # Apply the exact same transforms as the processing pipeline
+                processor = self.image_processor.image_processor
+                
+                # Step 1: Handle EXIF orientation (same as processing)
+                upright_img, _ = processor._handle_exif_orientation(img)
+                
+                # Step 2: Apply resize settings (same as processing)
+                prepared_img = processor._prepare_image_for_processing(upright_img.copy())
+                
+                return prepared_img
+                
+        except Exception as e:
+            print(f"Error preparing original image: {e}")
+            return None
         
     def check_preview_queue(self):
         try:
-            photo, pil_image, status, _ = ThreadUtils.safe_queue_get(self.preview_queue)
+            photo, pil_image, status, original_data = ThreadUtils.safe_queue_get(self.preview_queue)
+            
+            # Store original image data if available
+            if original_data:
+                original_photo, original_pil = original_data
+                self.current_original_photo = original_photo
+                self.current_original_image = original_pil
+            
             if photo:
                 # Save current zoom and scroll position
                 current_zoom = SettingsUtils.get_variable_value(self.zoom_var, 1.0)
                 scroll_pos = CanvasUtils.get_canvas_scroll_position(self.preview_canvas)
                 
-                CanvasUtils.safe_canvas_delete(self.preview_canvas, "all")
+                # Store processed image
                 self.current_preview = photo
                 self.current_pil_image = pil_image
-                CanvasUtils.safe_canvas_create_image(self.preview_canvas, 0, 0, 
-                                                   self.current_preview, tags="preview_image")
-                CanvasUtils.safe_canvas_configure_scroll(self.preview_canvas)
+                
+                # Update display based on toggle state
+                self.update_preview_display()
                 
                 # Restore zoom and position instead of resetting
                 if hasattr(self, 'current_pil_image') and self.current_pil_image and current_zoom > 0:
@@ -380,6 +498,27 @@ class BackgroundRemovalApp:
         finally:
             self.root.after(100, self.check_preview_queue)
             
+    def update_preview_display(self):
+        """Update the preview display based on original/processed toggle"""
+        show_original = SettingsUtils.get_variable_value(self.show_original_var, False)
+        
+        if show_original and hasattr(self, 'current_original_photo') and self.current_original_photo:
+            # Show original image
+            CanvasUtils.safe_canvas_delete(self.preview_canvas, "all")
+            CanvasUtils.safe_canvas_create_image(self.preview_canvas, 0, 0, 
+                                               self.current_original_photo, tags="preview_image")
+            # Update current image reference for zoom operations
+            self.current_display_image = self.current_original_image
+        elif hasattr(self, 'current_preview') and self.current_preview:
+            # Show processed image
+            CanvasUtils.safe_canvas_delete(self.preview_canvas, "all")
+            CanvasUtils.safe_canvas_create_image(self.preview_canvas, 0, 0, 
+                                               self.current_preview, tags="preview_image")
+            # Update current image reference for zoom operations
+            self.current_display_image = self.current_pil_image
+        
+        CanvasUtils.safe_canvas_configure_scroll(self.preview_canvas)
+            
     def stop_processing(self):
         self.image_processor.should_stop = True
         self.status_var.set("Stopping...")
@@ -389,9 +528,11 @@ class BackgroundRemovalApp:
         self.update_resize_controls_wrapper()
 
     def update_alpha_matting_controls(self):
-        """Delegate to the processing component's alpha matting controls"""
+        """Delegate to the processing component's alpha matting controls and refresh preview"""
         if 'processing' in self.settings_components:
             self.settings_components['processing'].update_alpha_matting_controls()
+        # Alpha matting toggle affects processing, so refresh preview
+        self.refresh_preview_debounced()
 
     def on_file_selected(self, event):
         """Handle file selection in listbox"""
@@ -407,9 +548,62 @@ class BackgroundRemovalApp:
     def refresh_preview_now(self):
         """Refresh preview after a delay to avoid rapid updates"""
         self.debounce_timer = None
+        # Force sync UI settings to business logic before refresh
+        self._sync_ui_settings_to_processor()
         selection = self.file_listbox.curselection()
-        if selection and not self.processing:
+        # Check if we have a selection OR if there's already a preview loaded
+        has_current_image = (hasattr(self, 'current_pil_image') and self.current_pil_image is not None)
+        
+        if (selection or has_current_image) and not self.processing:
+            # If no selection but we have a current image, refresh that
+            if not selection and has_current_image:
+                # Find the current image in the file list and refresh it
+                current_file = self.current_file_var.get().replace("Current: ", "")
+                if current_file != "None" and current_file in self.files_to_process:
+                    index = self.files_to_process.index(current_file)
+                    self.file_listbox.selection_set(index)
             self.preview_selected()
+    
+    def _sync_ui_settings_to_processor(self):
+        """Sync UI settings to the image processor's business logic"""
+        if not self.image_processor or not self.image_processor.image_processor:
+            return
+            
+        try:
+            # Get the processing settings object
+            processor = self.image_processor.image_processor
+            settings = processor.settings
+            
+            # Sync processing settings from UI
+            settings.alpha_matting = SettingsUtils.get_variable_value(self.settings_manager.alpha_matting, False)
+            settings.alpha_matting_foreground_threshold = int(SettingsUtils.get_variable_value(
+                self.settings_manager.alpha_matting_foreground_threshold, 240))
+            settings.alpha_matting_background_threshold = int(SettingsUtils.get_variable_value(
+                self.settings_manager.alpha_matting_background_threshold, 10))
+            settings.post_process = SettingsUtils.get_variable_value(self.settings_manager.post_processing, False)
+            
+            # Sync resize settings
+            settings.resize_enabled = SettingsUtils.get_variable_value(self.settings_manager.resize_enabled, True)
+            settings.resize_mode = SettingsUtils.get_variable_value(self.settings_manager.resize_mode, "fraction")
+            settings.max_image_size = int(SettingsUtils.get_variable_value(self.settings_manager.max_image_size, 800))
+            settings.resize_fraction = float(SettingsUtils.get_variable_value(self.settings_manager.resize_fraction, 0.5))
+            
+            # Sync model settings and check if model changed
+            current_model = settings.model_name
+            new_model = SettingsUtils.get_variable_value(self.settings_manager.model_name, "u2netp")
+            model_changed = current_model != new_model
+            settings.model_name = new_model
+            
+            # If model changed, clear sessions to force new model loading
+            if model_changed:
+                processor.session_manager.clear_sessions()
+            
+            # Force refresh of the processor to pick up new settings
+            self.image_processor.refresh_processors()
+            
+        except Exception as e:
+            # Silent error handling - settings sync failed but app continues
+            pass
 
     def update_zoom(self, value=None):
         zoom = SettingsUtils.get_variable_value(self.zoom_var, 1.0)
@@ -418,12 +612,23 @@ class BackgroundRemovalApp:
             self.apply_zoom()
 
     def apply_zoom(self):
-        if not hasattr(self, 'current_pil_image') or self.current_pil_image is None: return
+        # Determine which image to zoom based on toggle state
+        show_original = SettingsUtils.get_variable_value(self.show_original_var, False)
+        current_image = None
+        
+        if show_original and hasattr(self, 'current_original_image') and self.current_original_image:
+            current_image = self.current_original_image
+        elif hasattr(self, 'current_pil_image') and self.current_pil_image:
+            current_image = self.current_pil_image
+            
+        if current_image is None: 
+            return
+            
         zoom = SettingsUtils.get_variable_value(self.zoom_var, 1.0)
-        original_width, original_height = self.current_pil_image.width, self.current_pil_image.height
+        original_width, original_height = current_image.width, current_image.height
         new_width, new_height = int(original_width * zoom), int(original_height * zoom)
         if new_width < 1 or new_height < 1: return
-        scaled_image = self.current_pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        scaled_image = current_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
         self.zoomed_preview = ImageTk.PhotoImage(scaled_image)
         CanvasUtils.safe_canvas_delete(self.preview_canvas, "preview_image")
         CanvasUtils.safe_canvas_create_image(self.preview_canvas, 0, 0, 
@@ -432,7 +637,16 @@ class BackgroundRemovalApp:
 
     def fit_to_window(self):
         """Fit image to window using utility calculations"""
-        if not hasattr(self, 'current_pil_image') or self.current_pil_image is None: 
+        # Determine which image to fit based on toggle state
+        show_original = SettingsUtils.get_variable_value(self.show_original_var, False)
+        current_image = None
+        
+        if show_original and hasattr(self, 'current_original_image') and self.current_original_image:
+            current_image = self.current_original_image
+        elif hasattr(self, 'current_pil_image') and self.current_pil_image:
+            current_image = self.current_pil_image
+            
+        if current_image is None:
             return
             
         canvas_width = self.preview_canvas.winfo_width()
@@ -441,7 +655,7 @@ class BackgroundRemovalApp:
         if canvas_width <= 1 or canvas_height <= 1: 
             return
             
-        image_size = (self.current_pil_image.width, self.current_pil_image.height)
+        image_size = (current_image.width, current_image.height)
         canvas_size = (canvas_width, canvas_height)
         zoom = UIUtils.calculate_zoom_to_fit(image_size, canvas_size)
         

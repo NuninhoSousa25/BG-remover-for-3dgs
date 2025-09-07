@@ -113,18 +113,17 @@ class SessionManager:
         
         with self.lock:
             if thread_id not in self.session_pool:
-                providers = self._get_cpu_providers()
+                # Force CPU-only execution, no CUDA attempts
+                providers = ['CPUExecutionProvider']
                 try:
                     self.session_pool[thread_id] = new_session(
                         self.settings.model_name, 
                         providers=providers
                     )
-                except Exception:
-                    # Fallback to basic CPU provider
-                    self.session_pool[thread_id] = new_session(
-                        self.settings.model_name, 
-                        providers=['CPUExecutionProvider']
-                    )
+                except Exception as e:
+                    print(f"Error creating session for model {self.settings.model_name}: {e}")
+                    # Try with default settings
+                    self.session_pool[thread_id] = new_session(self.settings.model_name)
         
         return self.session_pool[thread_id]
     
