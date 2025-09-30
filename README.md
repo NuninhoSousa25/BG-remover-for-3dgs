@@ -4,6 +4,8 @@ to do
 
 realityscan exports images rotated 90º can we do the same?
 
+compile and export as 1 .exe, 
+
 
 ---
 
