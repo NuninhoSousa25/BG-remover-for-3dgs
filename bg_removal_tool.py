@@ -36,6 +36,14 @@ import queue
 import time
 import multiprocessing
 
+# Try to import tkinterdnd2 for drag and drop support
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    DRAG_DROP_AVAILABLE = True
+except ImportError:
+    DRAG_DROP_AVAILABLE = False
+    TkinterDnD = None
+
 try:
     import piexif
 except ImportError:
@@ -56,6 +64,22 @@ class BackgroundRemovalApp:
         self.root = root
         self.root.title("Batch Background Removal Tool - Loading...")
         self.root.geometry(f"{Constants.WINDOW_WIDTH}x{Constants.WINDOW_HEIGHT}")
+        
+        # Apply simple black & white theme
+        self.root.configure(bg=Constants.BG_COLOR)
+        
+        # Configure ttk style for clean black & white theme
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        
+        # Configure ttk styles
+        self.style.configure('TLabel', background=Constants.BG_COLOR, foreground=Constants.FG_COLOR)
+        self.style.configure('TFrame', background=Constants.BG_COLOR)
+        self.style.configure('TLabelFrame', background=Constants.BG_COLOR, foreground=Constants.FG_COLOR)
+        self.style.configure('TButton', background=Constants.BUTTON_BG, foreground=Constants.BUTTON_FG)
+        self.style.configure('TEntry', fieldbackground=Constants.ENTRY_BG, foreground=Constants.ENTRY_FG)
+        self.style.configure('TCombobox', fieldbackground=Constants.ENTRY_BG, foreground=Constants.ENTRY_FG)
+        self.style.configure('TProgressbar', background=Constants.ACCENT_COLOR)
         
         # Initialize basic components first
         self.preview_queue = queue.Queue()
@@ -158,6 +182,12 @@ class BackgroundRemovalApp:
 
         # Setup widget references for easy access
         self._setup_widget_references()
+
+        # Setup keyboard shortcuts
+        self._setup_keyboard_shortcuts()
+
+        # Setup drag and drop
+        self._setup_drag_and_drop()
 
     def _setup_widget_references(self):
         """Setup references to commonly used widgets"""
@@ -696,10 +726,193 @@ class BackgroundRemovalApp:
         finally:
             self.root.after(Constants.RESOURCE_UPDATE_INTERVAL_MS, self.update_resource_monitor)
 
+    def _setup_keyboard_shortcuts(self):
+        """Setup keyboard shortcuts for common actions"""
+        self.root.bind('<Left>', self.navigate_previous_image)
+        self.root.bind('<Right>', self.navigate_next_image)
+        self.root.bind('t', self.toggle_original_shortcut)
+        self.root.bind('T', self.toggle_original_shortcut)
+
+    def navigate_previous_image(self, event=None):
+        """Navigate to previous image in list"""
+        if not self.files_to_process or self.processing:
+            return
+
+        selection = self.file_listbox.curselection()
+        if selection:
+            current_index = selection[0]
+            if current_index > 0:
+                self.file_listbox.selection_clear(0, tk.END)
+                self.file_listbox.selection_set(current_index - 1)
+                self.file_listbox.see(current_index - 1)
+                self.preview_selected()
+
+    def navigate_next_image(self, event=None):
+        """Navigate to next image in list"""
+        if not self.files_to_process or self.processing:
+            return
+
+        selection = self.file_listbox.curselection()
+        if selection:
+            current_index = selection[0]
+            if current_index < len(self.files_to_process) - 1:
+                self.file_listbox.selection_clear(0, tk.END)
+                self.file_listbox.selection_set(current_index + 1)
+                self.file_listbox.see(current_index + 1)
+                self.preview_selected()
+
+    def toggle_original_shortcut(self, event=None):
+        """Toggle original view via keyboard shortcut"""
+        current_value = SettingsUtils.get_variable_value(self.show_original_var, False)
+        SettingsUtils.set_variable_value(self.show_original_var, not current_value)
+        self.toggle_original_view()
+
+    def _setup_drag_and_drop(self):
+        """Setup drag and drop for images and folders"""
+        if not DRAG_DROP_AVAILABLE:
+            # Silently skip if drag and drop is not available
+            return
+
+        # Enable drag and drop for preview canvas (single images)
+        self.preview_canvas.drop_target_register(DND_FILES)
+        self.preview_canvas.dnd_bind('<<Drop>>', self.on_drop_image)
+        self.preview_canvas.dnd_bind('<<DragEnter>>', self.on_drag_enter_canvas)
+        self.preview_canvas.dnd_bind('<<DragLeave>>', self.on_drag_leave_canvas)
+
+        # Enable drag and drop for input folder entry (folders and images)
+        # We need to access the input settings component
+        if 'input' in self.settings_components:
+            input_entry = self.settings_components['input'].input_entry
+            input_entry.drop_target_register(DND_FILES)
+            input_entry.dnd_bind('<<Drop>>', self.on_drop_folder)
+            input_entry.dnd_bind('<<DragEnter>>', self.on_drag_enter_entry)
+            input_entry.dnd_bind('<<DragLeave>>', self.on_drag_leave_entry)
+
+    def on_drag_enter_canvas(self, event):
+        """Visual feedback when dragging over canvas"""
+        self.preview_canvas.config(bg="#e8f4f8")
+        return event.action
+
+    def on_drag_leave_canvas(self, event):
+        """Remove visual feedback when leaving canvas"""
+        self.preview_canvas.config(bg=Constants.PREVIEW_CANVAS_BG)
+        return event.action
+
+    def on_drag_enter_entry(self, event):
+        """Visual feedback when dragging over input entry"""
+        if 'input' in self.settings_components:
+            self.settings_components['input'].input_entry.config(bg="#e8f4f8")
+        return event.action
+
+    def on_drag_leave_entry(self, event):
+        """Remove visual feedback when leaving input entry"""
+        if 'input' in self.settings_components:
+            self.settings_components['input'].input_entry.config(bg=Constants.ENTRY_BG)
+        return event.action
+
+    def on_drop_image(self, event):
+        """Handle dropping image file(s) onto preview canvas"""
+        self.preview_canvas.config(bg=Constants.PREVIEW_CANVAS_BG)
+
+        if not self.image_processor:
+            self.status_var.set("Please wait for AI model to finish loading...")
+            return event.action
+
+        # Parse dropped files
+        files = self._parse_drop_data(event.data)
+        if not files:
+            return event.action
+
+        # Filter for image files
+        image_files = [f for f in files if os.path.isfile(f) and FileUtils.is_valid_image_file(os.path.basename(f))]
+
+        if not image_files:
+            self.status_var.set("No valid image files dropped")
+            return event.action
+
+        # Use the first image file
+        dropped_image = image_files[0]
+
+        # Get the folder and filename
+        folder = os.path.dirname(dropped_image)
+        filename = os.path.basename(dropped_image)
+
+        # Set input folder if different
+        if folder != self.settings_manager.input_folder.get():
+            self.settings_manager.input_folder.set(folder)
+            self.scan_folder()
+
+        # Select the dropped file in listbox if it exists in the list
+        if filename in self.files_to_process:
+            index = self.files_to_process.index(filename)
+            self.file_listbox.selection_clear(0, tk.END)
+            self.file_listbox.selection_set(index)
+            self.file_listbox.see(index)
+            self.preview_selected()
+
+        return event.action
+
+    def on_drop_folder(self, event):
+        """Handle dropping folder or images onto input entry"""
+        if 'input' in self.settings_components:
+            self.settings_components['input'].input_entry.config(bg=Constants.ENTRY_BG)
+
+        # Parse dropped files/folders
+        files = self._parse_drop_data(event.data)
+        if not files:
+            return event.action
+
+        # Check if any of the dropped items is a directory
+        for item in files:
+            if os.path.isdir(item):
+                # It's a folder - set as input folder
+                self.settings_manager.input_folder.set(item)
+                self.root.after(100, self.scan_folder)
+                return event.action
+
+        # No folder dropped, check if images were dropped
+        image_files = [f for f in files if os.path.isfile(f) and FileUtils.is_valid_image_file(os.path.basename(f))]
+        if image_files:
+            # Use the parent folder of the first image
+            folder = os.path.dirname(image_files[0])
+            self.settings_manager.input_folder.set(folder)
+            self.root.after(100, self.scan_folder)
+
+        return event.action
+
+    def _parse_drop_data(self, data):
+        """Parse drag and drop data into list of file paths"""
+        if not data:
+            return []
+
+        # Handle different formats of dropped data
+        if isinstance(data, (list, tuple)):
+            return [str(item).strip('{}') for item in data]
+
+        # String format - could be space-separated or newline-separated
+        data_str = str(data).strip()
+
+        # Try to parse as brace-enclosed paths
+        import re
+        matches = re.findall(r'\{([^}]+)\}', data_str)
+        if matches:
+            return matches
+
+        # Try space-separated (for single path without braces)
+        if ' ' not in data_str or os.path.exists(data_str):
+            return [data_str]
+
+        # Fallback to splitting by space
+        return [item.strip('{}') for item in data_str.split()]
+
 
 def main():
     """Main application entry point"""
-    root = tk.Tk()
+    # Use TkinterDnD if available for drag and drop support
+    if DRAG_DROP_AVAILABLE and TkinterDnD:
+        root = TkinterDnD.Tk()
+    else:
+        root = tk.Tk()
     app = BackgroundRemovalApp(root)
     
     # Handle window close event

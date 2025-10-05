@@ -14,11 +14,20 @@ from utils import (UIUtils, FileUtils, SystemUtils, ImageUtils, ValidationUtils,
 
 # Constants
 class Constants:
+    # UI Colors - Simple Black & White Theme
+    BG_COLOR = "#ffffff"           # White background
+    FG_COLOR = "#000000"           # Black text
+    ACCENT_COLOR = "#333333"       # Dark gray for borders/accents
+    BUTTON_BG = "#f0f0f0"          # Light gray for buttons
+    BUTTON_FG = "#000000"          # Black button text
+    ENTRY_BG = "#ffffff"           # White entry background
+    ENTRY_FG = "#000000"           # Black entry text
+    
     # UI Dimensions
     WINDOW_WIDTH = 1200
     WINDOW_HEIGHT = 750
     LEFT_PANEL_WIDTH = 450
-    PREVIEW_CANVAS_BG = "light gray"
+    PREVIEW_CANVAS_BG = "#f5f5f5"
     
     # Timing
     DEBOUNCE_DELAY_MS = 500
@@ -78,8 +87,9 @@ class ToolTip:
         tw.wm_overrideredirect(True)
         tw.wm_geometry("+%d+%d" % (x, y))
         label = tk.Label(tw, text=self.text, justify=tk.LEFT,
-                        background="#ffffe0", relief=tk.SOLID, borderwidth=1,
-                        font=("tahoma", "8", "normal"))
+                        background=Constants.BG_COLOR, foreground=Constants.FG_COLOR,
+                        relief=tk.SOLID, borderwidth=1,
+                        font=("Segoe UI", "9", "normal"))
         label.pack(ipadx=1)
 
     def hide_tooltip(self):
@@ -114,20 +124,21 @@ class InputSettingsSection(UIComponent):
         """Create the input settings frame"""
         frame = ttk.LabelFrame(self.parent, text="Input Settings", padding="10")
         frame.pack(fill=tk.X, pady=5, padx=5)
-        
+
         # Input folder selection
         ttk.Label(frame, text="Input Folder:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        ttk.Entry(frame, textvariable=self.settings_manager.input_folder, width=30).grid(row=0, column=1, padx=5, pady=5)
+        self.input_entry = ttk.Entry(frame, textvariable=self.settings_manager.input_folder, width=30)
+        self.input_entry.grid(row=0, column=1, padx=5, pady=5)
         browse_btn = ttk.Button(frame, text="Browse...", command=self.browse_callback)
         browse_btn.grid(row=0, column=2)
         self.add_tooltip(browse_btn, "Select folder containing images. The folder will be automatically scanned for image files.")
-        
+
         # Overwrite checkbox
-        overwrite_cb = ttk.Checkbutton(frame, text="Overwrite existing files", 
+        overwrite_cb = ttk.Checkbutton(frame, text="Overwrite existing files",
                                      variable=self.settings_manager.overwrite_files)
         overwrite_cb.grid(row=1, column=0, columnspan=3, sticky=tk.W)
         self.add_tooltip(overwrite_cb, "If enabled, replaces existing output files. If disabled, skips files that already exist in the output folder.")
-        
+
         return frame
 
 

@@ -186,9 +186,8 @@ class ImageProcessor:
                 exif_dict = piexif.load(image.info['exif'])
                 if piexif.ImageIFD.Orientation in exif_dict['0th']:
                     original_orientation = exif_dict['0th'][piexif.ImageIFD.Orientation]
-            except Exception:
-                pass  # Ignore EXIF errors
-        
+            except Exception as e:
+                print(f"Warning: Could not read EXIF data. {type(e).__name__}: {e}")        
         # Create upright version for processing
         upright_image = ImageOps.exif_transpose(image)
         return upright_image, original_orientation
@@ -288,27 +287,39 @@ class ImageProcessor:
     def generate_preview(self, input_path: str) -> Tuple[Optional[Image.Image], Optional[str]]:
         """Generate preview of background removal result"""
         try:
+            # Check if model file exists
+            model_filename = f"{self.settings.model_name}.onnx"
+            model_path = os.path.join(os.path.expanduser('~'), '.u2net', model_filename)
+
+            if not os.path.exists(model_path):
+                return None, f"Model '{self.settings.model_name}' not found. Downloading..."
+
             with Image.open(input_path) as img:
                 # Always use upright image for preview
                 upright_img, _ = self._handle_exif_orientation(img)
                 prepared_img = self._prepare_image_for_processing(upright_img)
-                
+
                 start_time = time.time()
-                result_img = self.remove_background(prepared_img)
+                try:
+                    result_img = self.remove_background(prepared_img)
+                except Exception as e:
+                    return None, f"Background removal failed: {type(e).__name__}: {e}"
                 processing_time = time.time() - start_time
-                
+
                 # Create composite with checkerboard background for transparency
                 if result_img.mode == 'RGBA':
                     checkerboard = ImageUtils.create_checkerboard_pattern(result_img.size)
                     composite = Image.alpha_composite(checkerboard, result_img)
                 else:
                     composite = result_img
-                
+
                 status = f"Preview: {result_img.size[0]}×{result_img.size[1]}px, {processing_time:.1f}s"
                 return composite, status
-                
+
+        except FileNotFoundError:
+            return None, f"Image file not found: {os.path.basename(input_path)}"
         except Exception as e:
-            return None, f"Error generating preview: {str(e)}"
+            return None, f"Error in preview generation: {type(e).__name__}: {e}"
 
 
 class BatchProcessor:
